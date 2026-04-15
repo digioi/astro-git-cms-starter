@@ -1,0 +1,107 @@
+---
+/**
+ * Preview route: /preview/<slug>
+ *
+ * Server-rendered (on-demand) — NOT prerendered at build time.
+ * Every request reads the MDX file from disk and compiles it fresh,
+ * so edits appear instantly without a rebuild.
+ *
+ * The main [...slug] route remains fully static (prerendered at build).
+ * This is the split: static for visitors, live for the CMS preview.
+ */
+export const prerender = false;
+
+import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { compile, run } from '@mdx-js/mdx';
+import * as runtime from 'astro/jsx-runtime';
+import matter from 'gray-matter';
+import Layout from '../../layouts/Layout.astro';
+import { mdxComponents } from '../../components/mdx-components';
+
+const { slug } = Astro.params;
+
+if (!slug) {
+  return new Response('Not found', { status: 404 });
+}
+
+// Resolve the content file path — project root /content/<slug>.mdx
+const contentRoot = resolve('content');
+const filePath = join(contentRoot, `${slug}.mdx`);
+
+if (!existsSync(filePath)) {
+  return new Response(`Preview not found: ${slug}`, { status: 404 });
+}
+
+const raw = await readFile(filePath, 'utf-8');
+
+// Parse frontmatter separately (gray-matter strips it before MDX compilation)
+const { data: frontmatter, content: mdxBody } = matter(raw);
+
+// Compile the MDX body (frontmatter already stripped) to a JS module string
+const compiled = await compile(mdxBody, {
+  outputFormat: 'function-body',
+  development: false,
+});
+
+// Run the compiled module against Astro's JSX runtime to get the Content component
+const { default: Content } = await run(compiled, {
+  ...runtime,
+  baseUrl: import.meta.url,
+});
+
+const title = frontmatter.title ?? slug;
+const description = frontmatter.description;
+const isDraft = frontmatter.draft === true;
+---
+
+<Layout title={`Preview: ${title}`} description={description}>
+  <div class="preview-bar" aria-label="Preview mode indicator">
+    <span class="preview-bar__badge">Preview</span>
+    <span class="preview-bar__path">content/{slug}.mdx</span>
+    {isDraft && <span class="preview-bar__draft">Draft</span>}
+  </div>
+  <Content components={mdxComponents} />
+</Layout>
+
+<style>
+  .preview-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    padding: var(--spacing-2) var(--spacing-4);
+    background-color: var(--color-brand-primary);
+    color: var(--color-neutral-0);
+    font-family: var(--font-family-base);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+  }
+
+  .preview-bar__badge {
+    background-color: var(--color-neutral-0);
+    color: var(--color-brand-primary);
+    padding: var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius-sm);
+    font-weight: var(--font-weight-bold);
+    font-size: var(--font-size-xs);
+    letter-spacing: var(--letter-spacing-wide);
+    text-transform: uppercase;
+  }
+
+  .preview-bar__path {
+    opacity: 0.85;
+    font-family: var(--font-family-mono);
+  }
+
+  .preview-bar__draft {
+    margin-left: auto;
+    background-color: var(--color-warning);
+    color: var(--color-neutral-0);
+    padding: var(--spacing-1) var(--spacing-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-bold);
+    text-transform: uppercase;
+  }
+</style>

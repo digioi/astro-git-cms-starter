@@ -1,0 +1,27 @@
+---
+import { getCollection, render } from 'astro:content';
+import Layout from '../layouts/Layout.astro';
+import { mdxComponents } from '../components/mdx-components';
+
+export async function getStaticPaths() {
+  const pages = await getCollection('pages', ({ id, data }) => {
+    // Exclude the index page (handled by src/pages/index.astro)
+    // and any drafts in production
+    const isIndex = id === 'index';
+    const isDraft = import.meta.env.PROD && data.draft === true;
+    return !isIndex && !isDraft;
+  });
+
+  return pages.map((page) => ({
+    params: { slug: page.id },
+    props: { page },
+  }));
+}
+
+const { page } = Astro.props;
+const { Content } = await render(page);
+---
+
+<Layout title={page.data.title} description={page.data.description}>
+  <Content components={mdxComponents} />
+</Layout>

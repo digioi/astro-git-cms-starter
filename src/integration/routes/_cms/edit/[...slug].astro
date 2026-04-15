@@ -1,0 +1,399 @@
+---
+/**
+ * CMS editor — side-by-side MDX editor + live preview iframe.
+ * Served at /_cms/edit/<slug> (dev only).
+ *
+ * - Reads the current file content via the content API on load
+ * - Saves changes via POST to the content API
+ * - Preview iframe points at /preview/<slug> and refreshes on save
+ * - __new__ slug presents a blank file with a name input
+ */
+export const prerender = false;
+
+const { slug } = Astro.params;
+const isNew = slug === '__new__';
+const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{isNew ? 'New page — gitcms' : `Edit: ${slug} — gitcms`}</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        height: 100%;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px;
+        background: #0f172a;
+        color: #e2e8f0;
+        overflow: hidden;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-rows: 52px 1fr;
+        height: 100vh;
+      }
+
+      /* ── Topbar ───────────────────────────────────────────── */
+      .topbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 1rem;
+        background: #1e293b;
+        border-bottom: 1px solid #334155;
+        overflow: hidden;
+      }
+
+      .topbar__back {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: #94a3b8;
+        text-decoration: none;
+        font-size: 13px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        white-space: nowrap;
+        transition: color 150ms, background 150ms;
+      }
+      .topbar__back:hover { color: #e2e8f0; background: #334155; }
+
+      .topbar__sep {
+        color: #334155;
+        user-select: none;
+      }
+
+      .topbar__slug {
+        font-family: 'Fira Code', monospace;
+        font-size: 13px;
+        color: #818cf8;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .topbar__slug-input {
+        font-family: 'Fira Code', monospace;
+        font-size: 13px;
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 4px;
+        color: #818cf8;
+        padding: 4px 8px;
+        flex: 1;
+        min-width: 0;
+        max-width: 320px;
+        outline: none;
+      }
+      .topbar__slug-input:focus { border-color: #4f46e5; }
+      .topbar__slug-input::placeholder { color: #475569; }
+
+      .topbar__status {
+        font-size: 12px;
+        color: #64748b;
+        white-space: nowrap;
+        min-width: 80px;
+        text-align: right;
+      }
+      .topbar__status--saving { color: #facc15; }
+      .topbar__status--saved  { color: #4ade80; }
+      .topbar__status--error  { color: #f87171; }
+
+      .save-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 16px;
+        background: #4f46e5;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 150ms;
+      }
+      .save-btn:hover:not(:disabled) { background: #4338ca; }
+      .save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      .preview-btn {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 12px;
+        background: transparent;
+        color: #4ade80;
+        border: 1px solid #4ade80;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        white-space: nowrap;
+        transition: background 150ms;
+      }
+      .preview-btn:hover { background: #1a2e1a; }
+
+      /* ── Editor panes ─────────────────────────────────────── */
+      .panes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      .pane {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border-right: 1px solid #1e293b;
+      }
+      .pane:last-child { border-right: none; }
+
+      .pane__header {
+        display: flex;
+        align-items: center;
+        padding: 6px 12px;
+        background: #1e293b;
+        border-bottom: 1px solid #334155;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: #64748b;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .pane__dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #334155;
+      }
+      .pane--editor .pane__dot { background: #818cf8; }
+      .pane--preview .pane__dot { background: #4ade80; }
+
+      .editor-textarea {
+        flex: 1;
+        width: 100%;
+        padding: 1.25rem;
+        background: #0f172a;
+        color: #e2e8f0;
+        border: none;
+        resize: none;
+        font-family: 'Fira Code', 'Cascadia Code', 'Courier New', monospace;
+        font-size: 13px;
+        line-height: 1.7;
+        outline: none;
+        tab-size: 2;
+      }
+
+      .preview-frame {
+        flex: 1;
+        width: 100%;
+        border: none;
+        background: #fff;
+      }
+
+      .preview-placeholder {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #475569;
+        font-size: 13px;
+        font-style: italic;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <header class="topbar">
+        <a class="topbar__back" href={cmsBase}>← Content</a>
+        <span class="topbar__sep">/</span>
+
+        {isNew
+          ? <input
+              id="slug-input"
+              class="topbar__slug-input"
+              type="text"
+              placeholder="page-slug (e.g. about or blog/my-post)"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          : <span class="topbar__slug">{slug}.mdx</span>
+        }
+
+        <span id="status" class="topbar__status"></span>
+
+        {!isNew && (
+          <a
+            id="preview-link"
+            class="preview-btn"
+            href={`/preview/${slug}`}
+            target="_blank"
+          >
+            Preview ↗
+          </a>
+        )}
+
+        <button id="save-btn" class="save-btn">Save</button>
+      </header>
+
+      <div class="panes">
+        <div class="pane pane--editor">
+          <div class="pane__header">
+            <span class="pane__dot"></span>
+            MDX Editor
+          </div>
+          <textarea
+            id="editor"
+            class="editor-textarea"
+            spellcheck="false"
+            autocomplete="off"
+            placeholder="---&#10;title: My Page&#10;description: A brief description&#10;---&#10;&#10;# Hello&#10;&#10;Start writing your page content here."
+          ></textarea>
+        </div>
+
+        <div class="pane pane--preview">
+          <div class="pane__header">
+            <span class="pane__dot"></span>
+            Preview
+            {!isNew && <span style="margin-left:auto;font-size:10px;color:#334155;text-transform:none;letter-spacing:0">(saves to refresh)</span>}
+          </div>
+          {isNew
+            ? <div class="preview-placeholder">Save the page first to see a preview</div>
+            : <iframe id="preview-frame" class="preview-frame" src={`/preview/${slug}`}></iframe>
+          }
+        </div>
+      </div>
+    </div>
+
+    <script define:vars={{ slug, isNew, cmsBase }}>
+      const editor = document.getElementById('editor');
+      const saveBtn = document.getElementById('save-btn');
+      const statusEl = document.getElementById('status');
+      const slugInput = document.getElementById('slug-input');
+      const previewFrame = document.getElementById('preview-frame');
+      const previewLink = document.getElementById('preview-link');
+
+      let dirty = false;
+      let currentSlug = isNew ? null : slug;
+
+      // ── Load existing content ────────────────────────────────
+      if (!isNew) {
+        fetch(`${cmsBase}/api/content/${slug}`)
+          .then(r => r.json())
+          .then(data => {
+            if (data.content !== undefined) {
+              editor.value = data.content;
+            }
+          })
+          .catch(() => setStatus('Failed to load', 'error'));
+      } else {
+        // New page: seed with a frontmatter template
+        editor.value = `---\ntitle: \ndescription: \n---\n\n`;
+        editor.focus();
+        // Position cursor at end of title line
+        const titlePos = editor.value.indexOf('title: ') + 'title: '.length;
+        editor.setSelectionRange(titlePos, titlePos);
+      }
+
+      // ── Dirty tracking ───────────────────────────────────────
+      editor.addEventListener('input', () => {
+        if (!dirty) {
+          dirty = true;
+          setStatus('Unsaved changes', '');
+        }
+      });
+
+      // ── Keyboard shortcut: Cmd/Ctrl + S ─────────────────────
+      document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+          e.preventDefault();
+          save();
+        }
+      });
+
+      // ── Save button ──────────────────────────────────────────
+      saveBtn.addEventListener('click', save);
+
+      async function save() {
+        const content = editor.value;
+
+        // For new pages, resolve the slug from the input
+        if (isNew) {
+          const rawSlug = slugInput?.value?.trim();
+          if (!rawSlug) {
+            setStatus('Enter a slug first', 'error');
+            slugInput?.focus();
+            return;
+          }
+          // Normalise: lowercase, replace spaces with hyphens, strip leading slashes
+          currentSlug = rawSlug
+            .toLowerCase()
+            .replace(/\s+/g, '-')
+            .replace(/^\/+/, '');
+        }
+
+        saveBtn.disabled = true;
+        setStatus('Saving…', 'saving');
+
+        try {
+          const res = await fetch(`${cmsBase}/api/content/${currentSlug}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content }),
+          });
+
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error ?? `HTTP ${res.status}`);
+          }
+
+          dirty = false;
+          setStatus('Saved', 'saved');
+
+          if (isNew) {
+            // Redirect to the edit page for the newly created slug
+            window.location.href = `${cmsBase}/edit/${currentSlug}`;
+            return;
+          }
+
+          // Refresh the preview iframe
+          if (previewFrame) {
+            previewFrame.src = previewFrame.src;
+          }
+
+        } catch (err) {
+          setStatus(`Error: ${err.message}`, 'error');
+        } finally {
+          saveBtn.disabled = false;
+        }
+      }
+
+      function setStatus(msg, type) {
+        statusEl.textContent = msg;
+        statusEl.className = 'topbar__status' + (type ? ` topbar__status--${type}` : '');
+      }
+
+      // ── Warn on unload if unsaved ────────────────────────────
+      window.addEventListener('beforeunload', (e) => {
+        if (dirty) {
+          e.preventDefault();
+          e.returnValue = '';
+        }
+      });
+    </script>
+  </body>
+</html>

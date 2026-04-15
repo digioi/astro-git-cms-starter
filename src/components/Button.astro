@@ -1,0 +1,112 @@
+---
+interface Props {
+  variant?: 'primary' | 'secondary';
+  size?: 'sm' | 'md' | 'lg';
+  href?: string;
+  type?: 'button' | 'submit' | 'reset';
+  disabled?: boolean;
+}
+
+const {
+  variant = 'primary',
+  size = 'md',
+  href,
+  type = 'button',
+  disabled = false,
+} = Astro.props;
+
+const tag = href ? 'a' : 'button';
+---
+
+{tag === 'a' ? (
+  <a
+    href={href}
+    class:list={['btn', `btn--${variant}`, `btn--${size}`]}
+    aria-disabled={disabled ? 'true' : undefined}
+  >
+    <slot />
+  </a>
+) : (
+  <button
+    type={type}
+    disabled={disabled}
+    class:list={['btn', `btn--${variant}`, `btn--${size}`]}
+  >
+    <slot />
+  </button>
+)}
+
+<style>
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-2);
+    font-family: var(--font-family-base);
+    font-weight: var(--font-weight-medium);
+    line-height: var(--line-height-tight);
+    border-radius: var(--radius-md);
+    border: 2px solid transparent;
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+      background-color var(--transition-duration-base) var(--transition-easing-default),
+      color var(--transition-duration-base) var(--transition-easing-default),
+      border-color var(--transition-duration-base) var(--transition-easing-default),
+      box-shadow var(--transition-duration-base) var(--transition-easing-default);
+
+    /* Focus visible ring using the focus token */
+    &:focus-visible {
+      outline: 2px solid var(--color-focus);
+      outline-offset: 2px;
+    }
+
+    &:disabled,
+    &[aria-disabled='true'] {
+      opacity: 0.5;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+  }
+
+  /* ─── Variants ───────────────────────────────────────────────── */
+
+  .btn--primary {
+    background-color: var(--color-brand-primary);
+    color: var(--color-neutral-0);
+    border-color: var(--color-brand-primary);
+
+    &:hover {
+      background-color: var(--color-brand-primary-hover);
+      border-color: var(--color-brand-primary-hover);
+    }
+  }
+
+  .btn--secondary {
+    background-color: transparent;
+    color: var(--color-brand-primary);
+    border-color: var(--color-brand-primary);
+
+    &:hover {
+      background-color: var(--color-brand-primary);
+      color: var(--color-neutral-0);
+    }
+  }
+
+  /* ─── Sizes ──────────────────────────────────────────────────── */
+
+  .btn--sm {
+    font-size: var(--font-size-sm);
+    padding: var(--spacing-1) var(--spacing-3);
+  }
+
+  .btn--md {
+    font-size: var(--font-size-base);
+    padding: var(--spacing-2) var(--spacing-5);
+  }
+
+  .btn--lg {
+    font-size: var(--font-size-lg);
+    padding: var(--spacing-3) var(--spacing-6);
+  }
+</style>

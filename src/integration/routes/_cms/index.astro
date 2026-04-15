@@ -1,0 +1,196 @@
+---
+/**
+ * CMS index — lists all MDX files in the content directory.
+ * Served at /_cms (dev only, injected by the gitcms integration).
+ */
+export const prerender = false;
+
+import { readdir, stat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { resolve, join, relative } from 'node:path';
+
+const contentDir = import.meta.env.GITCMS_CONTENT_DIR ?? 'content';
+const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
+const contentRoot = resolve(contentDir);
+
+// Recursively collect all .mdx files
+async function collectMdxFiles(dir: string): Promise<string[]> {
+  if (!existsSync(dir)) return [];
+  const entries = await readdir(dir, { withFileTypes: true });
+  const results: string[] = [];
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...await collectMdxFiles(full));
+    } else if (entry.name.endsWith('.mdx')) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
+const files = await collectMdxFiles(contentRoot);
+
+const pages = await Promise.all(
+  files.map(async (f) => {
+    const slug = relative(contentRoot, f).replace(/\.mdx$/, '');
+    const stats = await stat(f);
+    return { slug, modified: stats.mtime };
+  })
+);
+
+pages.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>CMS — Content</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px;
+        background: #0f172a;
+        color: #e2e8f0;
+        min-height: 100vh;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 1.5rem;
+        height: 52px;
+        background: #1e293b;
+        border-bottom: 1px solid #334155;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+
+      .topbar__brand {
+        font-weight: 700;
+        font-size: 15px;
+        color: #f8fafc;
+        letter-spacing: -0.01em;
+      }
+
+      .topbar__brand span {
+        color: #818cf8;
+      }
+
+      .new-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        background: #4f46e5;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        transition: background 150ms;
+      }
+      .new-btn:hover { background: #4338ca; }
+
+      .main {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem;
+      }
+
+      h1 {
+        font-size: 20px;
+        font-weight: 700;
+        margin: 0 0 1.5rem;
+        color: #f8fafc;
+      }
+
+      .empty {
+        text-align: center;
+        padding: 4rem 0;
+        color: #64748b;
+      }
+
+      .file-list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      .file-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 16px;
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        text-decoration: none;
+        color: inherit;
+        transition: border-color 150ms, background 150ms;
+        gap: 1rem;
+      }
+      .file-item:hover {
+        border-color: #4f46e5;
+        background: #263248;
+      }
+
+      .file-item__slug {
+        font-family: 'Fira Code', 'Cascadia Code', monospace;
+        font-size: 13px;
+        color: #818cf8;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .file-item__meta {
+        font-size: 12px;
+        color: #64748b;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar__brand">git<span>cms</span></div>
+      <a class="new-btn" href={`${cmsBase}/edit/__new__`}>+ New page</a>
+    </header>
+
+    <main class="main">
+      <h1>Content ({pages.length})</h1>
+
+      {pages.length === 0 ? (
+        <div class="empty">
+          <p>No MDX files found in <code>{contentDir}/</code></p>
+          <a class="new-btn" href={`${cmsBase}/edit/__new__`}>Create your first page</a>
+        </div>
+      ) : (
+        <div class="file-list">
+          {pages.map(({ slug, modified }) => (
+            <a class="file-item" href={`${cmsBase}/edit/${slug}`}>
+              <span class="file-item__slug">{slug}.mdx</span>
+              <span class="file-item__meta">
+                {modified.toLocaleDateString()} {modified.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
+    </main>
+  </body>
+</html>
