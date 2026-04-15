@@ -15,7 +15,7 @@ import { compile, run } from '@mdx-js/mdx';
 import * as runtime from 'astro/jsx-runtime';
 import matter from 'gray-matter';
 import Layout from '@gitcms-project/layouts/Layout.astro';
-import { mdxComponents } from '@gitcms-project/components/mdx-components';
+import { previewMdxComponents } from '@gitcms-project/components/mdx-components';
 import { recmaUnknownComponents } from '../../recma-unknown-components.js';
 
 const { slug } = Astro.params;
@@ -61,7 +61,7 @@ const isDraft = frontmatter.draft === true;
     {isDraft && <span class="preview-bar__draft">Draft</span>}
     <a class="preview-bar__edit-link" href={`${cmsBase}/edit/${slug}`}>Edit ✏︎</a>
   </div>
-  <Content components={mdxComponents} />
+  <Content components={previewMdxComponents} />
 </Layout>
 
 <style>

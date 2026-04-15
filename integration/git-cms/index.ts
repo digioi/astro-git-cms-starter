@@ -2,6 +2,22 @@ import type { AstroIntegration } from 'astro';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
+/**
+ * Describes a single frontmatter field exposed in the Rich Editor form.
+ * Mirrors the FrontmatterField type in config/cms.ts — kept in sync manually
+ * so the integration package has no dependency on the host project's config dir.
+ */
+export interface FrontmatterField {
+  /** The YAML key as it appears in frontmatter (e.g. "title", "draft") */
+  key: string;
+  /** Human-readable label shown in the rich editor form */
+  label: string;
+  /** Controls which form input is rendered */
+  type: 'text' | 'boolean';
+  /** If true, the field will be marked required in the form */
+  required?: boolean;
+}
+
 export interface GitCMSOptions {
   /**
    * Path to the content directory relative to the project root.
@@ -14,11 +30,19 @@ export interface GitCMSOptions {
    * Defaults to '/_cms'.
    */
   base?: string;
+
+  /**
+   * Frontmatter field definitions for the Rich Editor form.
+   * Each entry maps to one form control (text input or checkbox).
+   * Fields not listed here are preserved on round-trip but not shown in the form.
+   */
+  frontmatter?: readonly FrontmatterField[];
 }
 
 export function gitcms(options: GitCMSOptions = {}): AstroIntegration {
   const contentDir = options.contentDir ?? 'content';
   const cmsBase = options.base ?? '/_cms';
+  const frontmatterFields = options.frontmatter ?? [];
 
   return {
     name: 'gitcms',
@@ -94,6 +118,7 @@ export function gitcms(options: GitCMSOptions = {}): AstroIntegration {
             define: {
               'import.meta.env.GITCMS_CONTENT_DIR': JSON.stringify(contentDir),
               'import.meta.env.GITCMS_BASE': JSON.stringify(cmsBase),
+              'import.meta.env.GITCMS_FRONTMATTER': JSON.stringify(frontmatterFields),
             },
             build: {
               rollupOptions: {

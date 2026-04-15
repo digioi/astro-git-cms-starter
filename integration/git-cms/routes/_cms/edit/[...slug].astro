@@ -7,13 +7,15 @@
  * - Saves changes via POST to the content API
  * - Preview iframe points at /preview/<slug> and refreshes on save
  * - __new__ slug presents a blank file with a name input
- * - Asset drawer: upload images to src/assets/, copy MDX snippet to clipboard
+ * - Asset drawer: upload images to src/assets/, copy MDX snippet to clipboard (MDX mode only)
+ * - Rich Editor toggle: form-based frontmatter + body textarea for non-MDX authors
  */
 export const prerender = false;
 
 const { slug } = Astro.params;
 const isNew = slug === '__new__';
 const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
+const frontmatterFields = import.meta.env.GITCMS_FRONTMATTER ?? '[]';
 ---
 
 <!doctype html>
@@ -181,6 +183,36 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
       .pane--editor .pane__dot { background: #818cf8; }
       .pane--preview .pane__dot { background: #4ade80; }
 
+      /* ── Mode switcher ──────────────────────────────────────── */
+      .mode-switcher {
+        display: inline-flex;
+        border: 1px solid #334155;
+        border-radius: 4px;
+        overflow: hidden;
+      }
+
+      .mode-btn {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 10px;
+        background: #0f172a;
+        border: none;
+        border-right: 1px solid #334155;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: background 150ms, color 150ms;
+      }
+      .mode-btn:last-child { border-right: none; }
+      .mode-btn:hover { color: #94a3b8; }
+      .mode-btn[aria-pressed='true'] {
+        background: #1e293b;
+        color: #e2e8f0;
+      }
+
       .assets-toggle {
         margin-left: auto;
         display: inline-flex;
@@ -201,6 +233,7 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
       .assets-toggle:hover,
       .assets-toggle[aria-expanded='true'] { border-color: #818cf8; color: #818cf8; }
 
+      /* ── MDX editor ─────────────────────────────────────────── */
       .editor-textarea {
         flex: 1;
         width: 100%;
@@ -216,6 +249,123 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
         tab-size: 2;
       }
 
+      /* ── Rich editor ────────────────────────────────────────── */
+      .rich-editor {
+        display: none;
+        flex-direction: column;
+        flex: 1;
+        overflow-y: auto;
+        background: #0f172a;
+      }
+      .rich-editor.is-active { display: flex; }
+
+      .fm-form {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        padding: 1rem 1.25rem 0;
+        border-bottom: 1px solid #1e293b;
+        padding-bottom: 1rem;
+        flex-shrink: 0;
+      }
+
+      .fm-form__heading {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #475569;
+        margin: 0 0 0.75rem;
+      }
+
+      .fm-field {
+        display: grid;
+        grid-template-columns: 120px 1fr;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 0;
+        border-bottom: 1px solid #1e293b;
+      }
+      .fm-field:last-child { border-bottom: none; }
+
+      .fm-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #64748b;
+        user-select: none;
+      }
+      .fm-label--required::after {
+        content: ' *';
+        color: #f87171;
+      }
+
+      .fm-input {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 4px;
+        color: #e2e8f0;
+        font-family: inherit;
+        font-size: 13px;
+        padding: 5px 8px;
+        outline: none;
+        width: 100%;
+        transition: border-color 150ms;
+      }
+      .fm-input:focus { border-color: #4f46e5; }
+      .fm-input::placeholder { color: #475569; }
+
+      .fm-checkbox-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .fm-checkbox {
+        width: 16px;
+        height: 16px;
+        accent-color: #4f46e5;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+
+      .body-section {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        padding: 1rem 1.25rem;
+        gap: 0.5rem;
+        min-height: 0;
+      }
+
+      .body-section__heading {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #475569;
+        margin: 0;
+        flex-shrink: 0;
+      }
+
+      .body-textarea {
+        flex: 1;
+        width: 100%;
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 6px;
+        color: #e2e8f0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px;
+        line-height: 1.7;
+        padding: 0.75rem 1rem;
+        resize: none;
+        outline: none;
+        transition: border-color 150ms;
+        min-height: 200px;
+      }
+      .body-textarea:focus { border-color: #4f46e5; }
+      .body-textarea::placeholder { color: #475569; }
+
+      /* ── Preview pane ───────────────────────────────────────── */
       .preview-frame {
         flex: 1;
         width: 100%;
@@ -386,27 +536,51 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
         <div class="pane pane--editor">
           <div class="pane__header">
             <span class="pane__dot"></span>
-            MDX Editor
+            Editor
+            <div class="mode-switcher" role="group" aria-label="Editor mode">
+              <button id="mode-btn-rich" class="mode-btn" aria-pressed="true">Rich</button>
+              <button id="mode-btn-mdx"  class="mode-btn" aria-pressed="false">MDX</button>
+            </div>
             <button
               id="assets-toggle"
               class="assets-toggle"
               aria-expanded="false"
               aria-controls="asset-drawer"
               title="Toggle image assets"
+              style="display:none"
             >
               Images
             </button>
           </div>
 
+          <!-- MDX mode: raw textarea (hidden by default, JS switches modes) -->
           <textarea
             id="editor"
             class="editor-textarea"
+            style="display:none"
             spellcheck="false"
             autocomplete="off"
             placeholder="---&#10;title: My Page&#10;description: A brief description&#10;---&#10;&#10;# Hello&#10;&#10;Start writing your page content here."
           ></textarea>
 
-          <!-- Asset drawer sits below the textarea, inside the editor pane -->
+          <!-- Rich mode: frontmatter form + body textarea (default) -->
+          <div id="rich-editor" class="rich-editor is-active">
+            <div class="fm-form">
+              <p class="fm-form__heading">Frontmatter</p>
+              <div id="fm-fields"></div>
+            </div>
+            <div class="body-section">
+              <p class="body-section__heading">Content</p>
+              <textarea
+                id="body-editor"
+                class="body-textarea"
+                spellcheck="true"
+                placeholder="Write your page content here using Markdown…"
+              ></textarea>
+            </div>
+          </div>
+
+          <!-- Asset drawer sits below the editor, inside the editor pane -->
           <div id="asset-drawer" class="asset-drawer" role="region" aria-label="Image assets">
             <div class="asset-drawer__toolbar">
               <label class="upload-label" for="asset-file-input">
@@ -440,30 +614,222 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
       </div>
     </div>
 
-    <script define:vars={{ slug, isNew, cmsBase }}>
-      const editor = document.getElementById('editor');
-      const saveBtn = document.getElementById('save-btn');
-      const statusEl = document.getElementById('status');
-      const slugInput = document.getElementById('slug-input');
+    <script define:vars={{ slug, isNew, cmsBase, frontmatterFields }}>
+      // ── Field config ───────────────────────────────────────────
+      // frontmatterFields is the JSON-serialised array from GITCMS_FRONTMATTER.
+      // It arrives as a string from define:vars when the env value is a string.
+      const FIELDS = typeof frontmatterFields === 'string'
+        ? JSON.parse(frontmatterFields)
+        : (frontmatterFields ?? []);
+
+      // ── DOM refs ───────────────────────────────────────────────
+      const editor      = document.getElementById('editor');
+      const richEditor  = document.getElementById('rich-editor');
+      const fmFields    = document.getElementById('fm-fields');
+      const bodyEditor  = document.getElementById('body-editor');
+      const saveBtn     = document.getElementById('save-btn');
+      const statusEl    = document.getElementById('status');
+      const slugInput   = document.getElementById('slug-input');
       const previewFrame = document.getElementById('preview-frame');
+      const modeBtnRich = document.getElementById('mode-btn-rich');
+      const modeBtnMdx  = document.getElementById('mode-btn-mdx');
+      const assetsToggle = document.getElementById('assets-toggle');
+      const assetDrawer = document.getElementById('asset-drawer');
+      const assetGrid   = document.getElementById('asset-grid');
+      const fileInput   = document.getElementById('asset-file-input');
+      const uploadStatus = document.getElementById('upload-status');
 
       let dirty = false;
       let currentSlug = isNew ? null : slug;
+      let activeMode = 'rich'; // 'mdx' | 'rich'
+
+      // ── Build rich editor form fields ─────────────────────────
+      for (const field of FIELDS) {
+        const row = document.createElement('div');
+        row.className = 'fm-field';
+
+        const label = document.createElement('label');
+        label.className = 'fm-label' + (field.required ? ' fm-label--required' : '');
+        label.textContent = field.label;
+        label.htmlFor = `fm-${field.key}`;
+
+        let control;
+        if (field.type === 'boolean') {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'fm-checkbox-wrapper';
+          control = document.createElement('input');
+          control.type = 'checkbox';
+          control.className = 'fm-checkbox';
+          control.id = `fm-${field.key}`;
+          control.dataset.fmKey = field.key;
+          control.dataset.fmType = 'boolean';
+          wrapper.appendChild(control);
+          row.appendChild(label);
+          row.appendChild(wrapper);
+        } else {
+          control = document.createElement('input');
+          control.type = 'text';
+          control.className = 'fm-input';
+          control.id = `fm-${field.key}`;
+          control.dataset.fmKey = field.key;
+          control.dataset.fmType = 'text';
+          if (field.required) control.required = true;
+          row.appendChild(label);
+          row.appendChild(control);
+        }
+
+        control.addEventListener('input', () => {
+          if (!dirty) { dirty = true; setStatus('Unsaved changes', ''); }
+        });
+
+        fmFields.appendChild(row);
+      }
+
+      bodyEditor.addEventListener('input', () => {
+        if (!dirty) { dirty = true; setStatus('Unsaved changes', ''); }
+      });
+
+      // ── Mode switching ─────────────────────────────────────────
+
+      /**
+       * Parse raw MDX string into frontmatter values, unknown keys, and body.
+       * Returns { fm: Record<string, string|boolean>, unknownLines: string[], body: string }
+       */
+      function parseMdx(raw) {
+        const fm = {};
+        const unknownLines = [];
+        let body = raw;
+
+        const fmMatch = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+        if (fmMatch) {
+          const yamlBlock = fmMatch[1];
+          body = fmMatch[2] ?? '';
+
+          const knownKeys = new Set(FIELDS.map(f => f.key));
+
+          for (const line of yamlBlock.split('\n')) {
+            const colonIdx = line.indexOf(':');
+            if (colonIdx === -1) {
+              // Preserve blank lines and comments verbatim
+              unknownLines.push(line);
+              continue;
+            }
+            const key = line.slice(0, colonIdx).trim();
+            const rawVal = line.slice(colonIdx + 1).trim();
+
+            if (knownKeys.has(key)) {
+              // Parse booleans
+              if (rawVal === 'true') fm[key] = true;
+              else if (rawVal === 'false') fm[key] = false;
+              else fm[key] = rawVal;
+            } else {
+              unknownLines.push(line);
+            }
+          }
+        }
+
+        return { fm, unknownLines, body };
+      }
+
+      /**
+       * Serialize the current rich editor state back to a raw MDX string.
+       * Preserves any unknown frontmatter keys that were parsed out on entry.
+       */
+      function serializeToMdx() {
+        const lines = [];
+
+        for (const field of FIELDS) {
+          const el = document.getElementById(`fm-${field.key}`);
+          if (!el) continue;
+          if (field.type === 'boolean') {
+            lines.push(`${field.key}: ${el.checked}`);
+          } else {
+            const val = el.value.trim();
+            if (val || field.required) lines.push(`${field.key}: ${val}`);
+          }
+        }
+
+        // Re-inject unknown keys that were preserved when switching to rich mode
+        const stored = richEditor.dataset.unknownLines;
+        if (stored) {
+          const extras = JSON.parse(stored);
+          if (extras.length) lines.push(...extras);
+        }
+
+        const fm = lines.length ? `---\n${lines.join('\n')}\n---\n\n` : '';
+        return fm + (bodyEditor.value ?? '');
+      }
+
+      function activateMode(mode) {
+        if (mode === 'rich') {
+          // MDX → Rich: parse the raw textarea, populate form + body
+          const { fm, unknownLines, body } = parseMdx(editor.value);
+
+          for (const field of FIELDS) {
+            const el = document.getElementById(`fm-${field.key}`);
+            if (!el) continue;
+            if (field.type === 'boolean') {
+              el.checked = fm[field.key] === true;
+            } else {
+              el.value = fm[field.key] != null ? String(fm[field.key]) : '';
+            }
+          }
+
+          bodyEditor.value = body.replace(/^\n+/, ''); // trim leading newlines
+          richEditor.dataset.unknownLines = JSON.stringify(unknownLines);
+
+          editor.style.display = 'none';
+          richEditor.classList.add('is-active');
+          assetsToggle.style.display = 'none';
+
+          // Close asset drawer if open
+          if (assetDrawer.classList.contains('is-open')) {
+            assetDrawer.classList.remove('is-open');
+            assetsToggle.setAttribute('aria-expanded', 'false');
+          }
+
+          modeBtnRich.setAttribute('aria-pressed', 'true');
+          modeBtnMdx.setAttribute('aria-pressed', 'false');
+          activeMode = 'rich';
+        } else {
+          // Rich → MDX: serialize form back into raw textarea
+          editor.value = serializeToMdx();
+
+          richEditor.classList.remove('is-active');
+          editor.style.display = '';
+          assetsToggle.style.display = '';
+
+          modeBtnRich.setAttribute('aria-pressed', 'false');
+          modeBtnMdx.setAttribute('aria-pressed', 'true');
+          activeMode = 'mdx';
+        }
+      }
+
+      modeBtnRich.addEventListener('click', () => {
+        if (activeMode !== 'rich') activateMode('rich');
+      });
+      modeBtnMdx.addEventListener('click', () => {
+        if (activeMode !== 'mdx') activateMode('mdx');
+      });
 
       // ── Load existing content ──────────────────────────────────
       if (!isNew) {
         fetch(`${cmsBase}/api/content/${slug}`)
           .then(r => r.json())
-          .then(data => { if (data.content !== undefined) editor.value = data.content; })
+          .then(data => {
+            if (data.content !== undefined) editor.value = data.content;
+            activateMode('rich');
+          })
           .catch(() => setStatus('Failed to load', 'error'));
       } else {
         editor.value = `---\ntitle: \ndescription: \n---\n\n`;
-        editor.focus();
-        const titlePos = editor.value.indexOf('title: ') + 'title: '.length;
-        editor.setSelectionRange(titlePos, titlePos);
+        activateMode('rich');
+        // Focus the title field in rich mode
+        const titleEl = document.getElementById('fm-title');
+        if (titleEl) titleEl.focus();
       }
 
-      // ── Dirty tracking ─────────────────────────────────────────
+      // ── Dirty tracking (MDX textarea) ──────────────────────────
       editor.addEventListener('input', () => {
         if (!dirty) { dirty = true; setStatus('Unsaved changes', ''); }
       });
@@ -480,6 +846,11 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
           const rawSlug = slugInput?.value?.trim();
           if (!rawSlug) { setStatus('Enter a slug first', 'error'); slugInput?.focus(); return; }
           currentSlug = rawSlug.toLowerCase().replace(/\s+/g, '-').replace(/^\/+/, '');
+        }
+
+        // If in rich mode, sync back to the raw MDX string before saving
+        if (activeMode === 'rich') {
+          editor.value = serializeToMdx();
         }
 
         saveBtn.disabled = true;
@@ -520,12 +891,6 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
       });
 
       // ── Asset drawer ───────────────────────────────────────────
-      const assetsToggle = document.getElementById('assets-toggle');
-      const assetDrawer = document.getElementById('asset-drawer');
-      const assetGrid = document.getElementById('asset-grid');
-      const fileInput = document.getElementById('asset-file-input');
-      const uploadStatus = document.getElementById('upload-status');
-
       let assetsLoaded = false;
 
       assetsToggle.addEventListener('click', () => {

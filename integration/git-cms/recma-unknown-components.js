@@ -28,7 +28,6 @@
  * See mdx-components.ts.
  */
 
-/** @returns {(tree: import('estree').Program) => void} */
 export function recmaUnknownComponents() {
   return (tree) => {
     for (const node of tree.body) {
@@ -41,7 +40,6 @@ export function recmaUnknownComponents() {
 
       // 1. Inject `const __unknownComponent = props.components?.__unknownComponent;`
       //    at the very top of _createMdxContent so it is in scope for defaults below.
-      /** @type {import('estree').VariableDeclaration} */
       const fallbackDecl = {
         type: 'VariableDeclaration',
         kind: 'const',
@@ -121,11 +119,7 @@ export function recmaUnknownComponents() {
 }
 
 /**
- * Returns true if `node` is a valid source for component destructuring:
- *   - `props.components || {}` or `props.components`  (Pattern A)
- *   - `_components`                                   (Pattern B)
- *
- * @param {import('estree').Expression | null | undefined} node
+ * Returns true if `node` is a valid source for component destructuring.
  */
 function isComponentsSource(node) {
   if (!node) return false;

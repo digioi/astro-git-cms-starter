@@ -2,14 +2,85 @@
 /**
  * Fallback for unknown MDX tags.
  *
- * When an MDX file uses a capitalised tag that isn't registered in
- * mdx-components.ts (e.g. a typo like <Foobar>), the Proxy in
- * mdx-components.ts returns this component instead of undefined.
- * It renders only the slot children, effectively stripping the unknown
- * tag and leaving the inner content as plain text/HTML.
+ * In production (preview === false, the default): renders only slot children,
+ * stripping the unknown tag from output entirely.
  *
- * This is intentionally a no-op wrapper — do not add markup or styles.
+ * In the /preview route (preview === true): renders a visible diagnostic block
+ * showing the unrecognised tag name and any attributes the author passed, so
+ * they can spot typos without leaving the preview pane.
  */
+
+interface Props {
+  name?: string;
+  preview?: boolean;
+  [key: string]: unknown;
+}
+
+const { name, preview = false, ...rest } = Astro.props;
+
+// Build an attribute string from the remaining props, filtering out Astro
+// internal keys that leak through the factory wrapper.
+const INTERNAL_KEYS = new Set(['class:list', 'class', 'style', 'data-astro-source-file', 'data-astro-source-loc']);
+const attrs = Object.entries(rest)
+  .filter(([k]) => !INTERNAL_KEYS.has(k))
+  .map(([k, v]) => {
+    if (v === true) return k;
+    if (v === false || v == null) return null;
+    return `${k}="${String(v)}"`;
+  })
+  .filter(Boolean)
+  .join(' ');
+
+const tag = name ?? 'Unknown';
+const openingTag = attrs ? `<${tag} ${attrs}>` : `<${tag}>`;
+const closingTag = `</${tag}>`;
 ---
 
-<slot />
+{preview && name ? (
+  <div class="unknown-component">
+    <span class="unknown-component__label">Unknown component</span>
+    <pre class="unknown-component__tag"><code>{openingTag}</code></pre>
+    <slot />
+    <pre class="unknown-component__tag"><code>{closingTag}</code></pre>
+  </div>
+) : (
+  <slot />
+)}
+
+<style>
+  .unknown-component {
+    display: block;
+    margin: var(--spacing-4) 0;
+    border: 1px dashed var(--color-warning, #f59e0b);
+    border-radius: var(--radius-sm, 4px);
+    overflow: hidden;
+    font-family: var(--font-family-mono, monospace);
+    font-size: var(--font-size-sm, 0.875rem);
+  }
+
+  .unknown-component__label {
+    display: block;
+    padding: var(--spacing-1, 0.25rem) var(--spacing-3, 0.75rem);
+    background-color: var(--color-warning, #f59e0b);
+    color: var(--color-neutral-0, #fff);
+    font-family: var(--font-family-base, sans-serif);
+    font-size: var(--font-size-xs, 0.75rem);
+    font-weight: var(--font-weight-bold, 700);
+    text-transform: uppercase;
+    letter-spacing: var(--letter-spacing-wide, 0.05em);
+  }
+
+  .unknown-component__tag {
+    margin: 0;
+    padding: var(--spacing-2, 0.5rem) var(--spacing-3, 0.75rem);
+    background-color: color-mix(in srgb, var(--color-warning, #f59e0b) 10%, transparent);
+    color: var(--color-neutral-900, #111);
+    overflow-x: auto;
+    white-space: pre;
+  }
+
+  .unknown-component__tag code {
+    font-family: inherit;
+    font-size: inherit;
+  }
+</style>
