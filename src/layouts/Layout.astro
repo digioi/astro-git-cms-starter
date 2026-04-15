@@ -4,9 +4,11 @@ import '../styles/tokens.css';
 interface Props {
   title: string;
   description?: string;
+  /** When true, adds data-preview to <body> so preview-only styles activate */
+  preview?: boolean;
 }
 
-const { title, description } = Astro.props;
+const { title, description, preview } = Astro.props;
 ---
 
 <!doctype html>
@@ -20,7 +22,7 @@ const { title, description } = Astro.props;
     {description && <meta name="description" content={description} />}
     <title>{title}</title>
   </head>
-  <body>
+  <body data-preview={preview || undefined}>
     <slot />
   </body>
 </html>

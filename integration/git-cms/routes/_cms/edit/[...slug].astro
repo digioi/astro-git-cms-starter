@@ -7,6 +7,7 @@
  * - Saves changes via POST to the content API
  * - Preview iframe points at /preview/<slug> and refreshes on save
  * - __new__ slug presents a blank file with a name input
+ * - Asset drawer: upload images to src/assets/, copy MDX snippet to clipboard
  */
 export const prerender = false;
 
@@ -40,7 +41,7 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
         height: 100vh;
       }
 
-      /* ── Topbar ───────────────────────────────────────────── */
+      /* ── Topbar ─────────────────────────────────────────────── */
       .topbar {
         display: flex;
         align-items: center;
@@ -65,10 +66,7 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
       }
       .topbar__back:hover { color: #e2e8f0; background: #334155; }
 
-      .topbar__sep {
-        color: #334155;
-        user-select: none;
-      }
+      .topbar__sep { color: #334155; user-select: none; }
 
       .topbar__slug {
         font-family: 'Fira Code', monospace;
@@ -143,7 +141,7 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
       }
       .preview-btn:hover { background: #1a2e1a; }
 
-      /* ── Editor panes ─────────────────────────────────────── */
+      /* ── Editor panes ───────────────────────────────────────── */
       .panes {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -183,6 +181,26 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
       .pane--editor .pane__dot { background: #818cf8; }
       .pane--preview .pane__dot { background: #4ade80; }
 
+      .assets-toggle {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 8px;
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 4px;
+        color: #94a3b8;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: border-color 150ms, color 150ms;
+      }
+      .assets-toggle:hover,
+      .assets-toggle[aria-expanded='true'] { border-color: #818cf8; color: #818cf8; }
+
       .editor-textarea {
         flex: 1;
         width: 100%;
@@ -212,6 +230,120 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
         justify-content: center;
         color: #475569;
         font-size: 13px;
+        font-style: italic;
+      }
+
+      /* ── Asset drawer ───────────────────────────────────────── */
+      .asset-drawer {
+        flex-shrink: 0;
+        background: #0f1f38;
+        border-top: 1px solid #334155;
+        display: none;
+        flex-direction: column;
+        max-height: 280px;
+        overflow: hidden;
+      }
+      .asset-drawer.is-open { display: flex; }
+
+      .asset-drawer__toolbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border-bottom: 1px solid #1e293b;
+        flex-shrink: 0;
+      }
+
+      .upload-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        background: #4f46e5;
+        color: #fff;
+        border-radius: 5px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 150ms;
+        white-space: nowrap;
+      }
+      .upload-label:hover { background: #4338ca; }
+
+      #asset-file-input { display: none; }
+
+      .upload-status {
+        font-size: 12px;
+        color: #64748b;
+      }
+      .upload-status--uploading { color: #facc15; }
+      .upload-status--ok  { color: #4ade80; }
+      .upload-status--err { color: #f87171; }
+
+      .asset-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+        gap: 8px;
+        padding: 10px 12px;
+        overflow-y: auto;
+        flex: 1;
+      }
+
+      .asset-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        cursor: pointer;
+        padding: 6px;
+        border-radius: 6px;
+        border: 1px solid transparent;
+        transition: border-color 150ms, background 150ms;
+        position: relative;
+      }
+      .asset-item:hover { border-color: #4f46e5; background: #1e293b; }
+
+      .asset-item__thumb {
+        width: 60px;
+        height: 60px;
+        object-fit: cover;
+        border-radius: 4px;
+        background: #1e293b;
+      }
+
+      .asset-item__name {
+        font-size: 10px;
+        color: #64748b;
+        text-align: center;
+        width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .asset-item__copied {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgb(79 70 229 / 0.85);
+        border-radius: 6px;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        opacity: 0;
+        transition: opacity 150ms;
+        pointer-events: none;
+      }
+      .asset-item.did-copy .asset-item__copied { opacity: 1; }
+
+      .asset-empty {
+        grid-column: 1 / -1;
+        padding: 1.5rem;
+        text-align: center;
+        color: #475569;
+        font-size: 12px;
         font-style: italic;
       }
     </style>
@@ -255,7 +387,17 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
           <div class="pane__header">
             <span class="pane__dot"></span>
             MDX Editor
+            <button
+              id="assets-toggle"
+              class="assets-toggle"
+              aria-expanded="false"
+              aria-controls="asset-drawer"
+              title="Toggle image assets"
+            >
+              Images
+            </button>
           </div>
+
           <textarea
             id="editor"
             class="editor-textarea"
@@ -263,6 +405,25 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
             autocomplete="off"
             placeholder="---&#10;title: My Page&#10;description: A brief description&#10;---&#10;&#10;# Hello&#10;&#10;Start writing your page content here."
           ></textarea>
+
+          <!-- Asset drawer sits below the textarea, inside the editor pane -->
+          <div id="asset-drawer" class="asset-drawer" role="region" aria-label="Image assets">
+            <div class="asset-drawer__toolbar">
+              <label class="upload-label" for="asset-file-input">
+                + Upload image
+              </label>
+              <input
+                id="asset-file-input"
+                type="file"
+                accept="image/jpeg,image/png,image/gif,image/webp,image/avif,image/svg+xml"
+                multiple
+              />
+              <span id="upload-status" class="upload-status"></span>
+            </div>
+            <div id="asset-grid" class="asset-grid">
+              <div class="asset-empty">Loading assets…</div>
+            </div>
+          </div>
         </div>
 
         <div class="pane pane--preview">
@@ -285,65 +446,40 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
       const statusEl = document.getElementById('status');
       const slugInput = document.getElementById('slug-input');
       const previewFrame = document.getElementById('preview-frame');
-      const previewLink = document.getElementById('preview-link');
 
       let dirty = false;
       let currentSlug = isNew ? null : slug;
 
-      // ── Load existing content ────────────────────────────────
+      // ── Load existing content ──────────────────────────────────
       if (!isNew) {
         fetch(`${cmsBase}/api/content/${slug}`)
           .then(r => r.json())
-          .then(data => {
-            if (data.content !== undefined) {
-              editor.value = data.content;
-            }
-          })
+          .then(data => { if (data.content !== undefined) editor.value = data.content; })
           .catch(() => setStatus('Failed to load', 'error'));
       } else {
-        // New page: seed with a frontmatter template
         editor.value = `---\ntitle: \ndescription: \n---\n\n`;
         editor.focus();
-        // Position cursor at end of title line
         const titlePos = editor.value.indexOf('title: ') + 'title: '.length;
         editor.setSelectionRange(titlePos, titlePos);
       }
 
-      // ── Dirty tracking ───────────────────────────────────────
+      // ── Dirty tracking ─────────────────────────────────────────
       editor.addEventListener('input', () => {
-        if (!dirty) {
-          dirty = true;
-          setStatus('Unsaved changes', '');
-        }
+        if (!dirty) { dirty = true; setStatus('Unsaved changes', ''); }
       });
 
-      // ── Keyboard shortcut: Cmd/Ctrl + S ─────────────────────
+      // ── Cmd/Ctrl+S ─────────────────────────────────────────────
       document.addEventListener('keydown', (e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-          e.preventDefault();
-          save();
-        }
+        if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); save(); }
       });
 
-      // ── Save button ──────────────────────────────────────────
       saveBtn.addEventListener('click', save);
 
       async function save() {
-        const content = editor.value;
-
-        // For new pages, resolve the slug from the input
         if (isNew) {
           const rawSlug = slugInput?.value?.trim();
-          if (!rawSlug) {
-            setStatus('Enter a slug first', 'error');
-            slugInput?.focus();
-            return;
-          }
-          // Normalise: lowercase, replace spaces with hyphens, strip leading slashes
-          currentSlug = rawSlug
-            .toLowerCase()
-            .replace(/\s+/g, '-')
-            .replace(/^\/+/, '');
+          if (!rawSlug) { setStatus('Enter a slug first', 'error'); slugInput?.focus(); return; }
+          currentSlug = rawSlug.toLowerCase().replace(/\s+/g, '-').replace(/^\/+/, '');
         }
 
         saveBtn.disabled = true;
@@ -353,7 +489,7 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
           const res = await fetch(`${cmsBase}/api/content/${currentSlug}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content }),
+            body: JSON.stringify({ content: editor.value }),
           });
 
           if (!res.ok) {
@@ -364,16 +500,8 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
           dirty = false;
           setStatus('Saved', 'saved');
 
-          if (isNew) {
-            // Redirect to the edit page for the newly created slug
-            window.location.href = `${cmsBase}/edit/${currentSlug}`;
-            return;
-          }
-
-          // Refresh the preview iframe
-          if (previewFrame) {
-            previewFrame.src = previewFrame.src;
-          }
+          if (isNew) { window.location.href = `${cmsBase}/edit/${currentSlug}`; return; }
+          if (previewFrame) previewFrame.src = previewFrame.src;
 
         } catch (err) {
           setStatus(`Error: ${err.message}`, 'error');
@@ -387,13 +515,101 @@ const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
         statusEl.className = 'topbar__status' + (type ? ` topbar__status--${type}` : '');
       }
 
-      // ── Warn on unload if unsaved ────────────────────────────
       window.addEventListener('beforeunload', (e) => {
-        if (dirty) {
-          e.preventDefault();
-          e.returnValue = '';
-        }
+        if (dirty) { e.preventDefault(); e.returnValue = ''; }
       });
+
+      // ── Asset drawer ───────────────────────────────────────────
+      const assetsToggle = document.getElementById('assets-toggle');
+      const assetDrawer = document.getElementById('asset-drawer');
+      const assetGrid = document.getElementById('asset-grid');
+      const fileInput = document.getElementById('asset-file-input');
+      const uploadStatus = document.getElementById('upload-status');
+
+      let assetsLoaded = false;
+
+      assetsToggle.addEventListener('click', () => {
+        const open = assetDrawer.classList.toggle('is-open');
+        assetsToggle.setAttribute('aria-expanded', String(open));
+        if (open && !assetsLoaded) loadAssets();
+      });
+
+      async function loadAssets() {
+        try {
+          const res = await fetch(`${cmsBase}/api/assets/list`);
+          const { assets } = await res.json();
+          assetsLoaded = true;
+          renderAssets(assets);
+        } catch {
+          assetGrid.innerHTML = '<div class="asset-empty">Failed to load assets</div>';
+        }
+      }
+
+      function renderAssets(assets) {
+        if (!assets.length) {
+          assetGrid.innerHTML = '<div class="asset-empty">No images yet — upload one above</div>';
+          return;
+        }
+        assetGrid.innerHTML = '';
+        for (const asset of assets) {
+          const item = document.createElement('div');
+          item.className = 'asset-item';
+          item.title = `Click to copy MDX snippet for ${asset.name}`;
+          item.innerHTML = `
+            <img class="asset-item__thumb" src="${asset.path}" alt="${asset.name}" loading="lazy" />
+            <span class="asset-item__name">${asset.name}</span>
+            <div class="asset-item__copied">Copied!</div>
+          `;
+          item.addEventListener('click', () => copySnippet(item, asset));
+          assetGrid.appendChild(item);
+        }
+      }
+
+      function copySnippet(item, asset) {
+        const snippet = `<Image src="${asset.path}" alt="${asset.name}" />`;
+        navigator.clipboard.writeText(snippet).then(() => {
+          item.classList.add('did-copy');
+          setTimeout(() => item.classList.remove('did-copy'), 1200);
+        });
+      }
+
+      // ── Upload ─────────────────────────────────────────────────
+      fileInput.addEventListener('change', async () => {
+        const files = Array.from(fileInput.files ?? []);
+        if (!files.length) return;
+
+        setUploadStatus(`Uploading ${files.length} file${files.length > 1 ? 's' : ''}…`, 'uploading');
+
+        const results = await Promise.allSettled(files.map(uploadFile));
+
+        const failed = results.filter(r => r.status === 'rejected').length;
+        if (failed) {
+          setUploadStatus(`${failed} upload(s) failed`, 'err');
+        } else {
+          setUploadStatus(`Uploaded ${files.length} file${files.length > 1 ? 's' : ''}`, 'ok');
+          setTimeout(() => setUploadStatus('', ''), 3000);
+        }
+
+        fileInput.value = '';
+        assetsLoaded = false;
+        loadAssets();
+      });
+
+      async function uploadFile(file) {
+        const form = new FormData();
+        form.append('file', file);
+        const res = await fetch(`${cmsBase}/api/assets/upload`, { method: 'POST', body: form });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error ?? `HTTP ${res.status}`);
+        }
+        return res.json();
+      }
+
+      function setUploadStatus(msg, type) {
+        uploadStatus.textContent = msg;
+        uploadStatus.className = 'upload-status' + (type ? ` upload-status--${type}` : '');
+      }
     </script>
   </body>
 </html>

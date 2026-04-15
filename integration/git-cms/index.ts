@@ -67,6 +67,20 @@ export function gitcms(options: GitCMSOptions = {}): AstroIntegration {
           prerender: false,
         });
 
+        // Asset API — upload files to src/assets/
+        injectRoute({
+          pattern: `${cmsBase}/api/assets/upload`,
+          entrypoint: resolve(routesDir, '_cms/api/assets/upload.ts'),
+          prerender: false,
+        });
+
+        // Asset API — list files in src/assets/
+        injectRoute({
+          pattern: `${cmsBase}/api/assets/list`,
+          entrypoint: resolve(routesDir, '_cms/api/assets/list.ts'),
+          prerender: false,
+        });
+
         // Pass config down to the routes via Vite define + alias
         updateConfig({
           vite: {

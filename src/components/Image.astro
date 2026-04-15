@@ -1,0 +1,149 @@
+---
+/**
+ * Image component — wraps Astro's optimised <Image /> for MDX authors.
+ *
+ * Usage in MDX:
+ *   <Image src="/src/assets/photo.jpg" alt="A photo" />
+ *   <Image src="/src/assets/hero.png" alt="Hero" width={1200} />
+ *
+ * - src must be a path under /src/assets/ (written there by the CMS uploader)
+ * - Astro's build-time image pipeline handles resizing, format conversion,
+ *   and hashed filenames automatically
+ * - width/height are optional — Astro infers them from the file when omitted
+ * - caption renders a <figcaption> below the image
+ * - alt is required for accessibility; omitting it shows a visible warning
+ *   in the /preview route (hidden in production via [data-preview] CSS gating)
+ */
+import { Image as AstroImage } from 'astro:assets';
+
+interface Props {
+  src: string;
+  alt?: string;
+  width?: number;
+  height?: number;
+  caption?: string;
+}
+
+const { src, alt, width, height, caption } = Astro.props;
+
+// Dynamically import the image from src/assets/ using Vite's glob import
+// so Astro's image optimisation pipeline can process it at build time.
+const images = import.meta.glob<{ default: ImageMetadata }>(
+  '/src/assets/**/*.{jpg,jpeg,png,gif,webp,avif,svg}'
+);
+
+const loader = images[src];
+
+if (!loader) {
+  // In dev, surface a visible error rather than silently breaking
+  const msg = `Image not found: ${src}. Make sure the file exists in src/assets/.`;
+  console.warn(`[Image] ${msg}`);
+}
+
+const missingAlt = !alt;
+if (missingAlt) {
+  console.warn(`[Image] Missing alt text for: ${src}`);
+}
+---
+
+{missingAlt ? (
+  <figure class="img-figure img-figure--no-alt">
+    {loader ? (
+      <AstroImage
+        src={loader()}
+        alt=""
+        width={width}
+        height={height}
+        class="img-figure__img"
+        aria-hidden="true"
+      />
+    ) : (
+      <div class="img-figure__placeholder" role="img" aria-label="Image missing">
+        Image not found: <code>{src}</code>
+      </div>
+    )}
+    <div class="img-figure__alt-error" role="alert">
+      Missing <code>alt</code> attribute — add descriptive alt text for accessibility.
+    </div>
+    {caption && <figcaption class="img-figure__caption">{caption}</figcaption>}
+  </figure>
+) : loader ? (
+  <figure class:list={['img-figure', caption && 'img-figure--captioned']}>
+    {/* @ts-ignore — width/height optional, Astro infers from metadata */}
+    <AstroImage
+      src={loader()}
+      alt={alt}
+      width={width}
+      height={height}
+      class="img-figure__img"
+    />
+    {caption && <figcaption class="img-figure__caption">{caption}</figcaption>}
+  </figure>
+) : (
+  <figure class="img-figure img-figure--missing">
+    <div class="img-figure__placeholder" role="img" aria-label={alt}>
+      Image not found: <code>{src}</code>
+    </div>
+    {caption && <figcaption class="img-figure__caption">{caption}</figcaption>}
+  </figure>
+)}
+
+<style>
+  .img-figure {
+    margin: var(--spacing-6) 0;
+    padding: 0;
+  }
+
+  .img-figure__img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-md);
+  }
+
+  .img-figure__caption {
+    margin-top: var(--spacing-2);
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+    font-style: italic;
+  }
+
+  .img-figure--missing .img-figure__placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-8);
+    background: var(--color-neutral-100);
+    border: 2px dashed var(--color-neutral-300);
+    border-radius: var(--radius-md);
+    color: var(--color-error);
+    font-size: var(--font-size-sm);
+  }
+
+  /* --- Missing alt warning: hidden everywhere except under [data-preview] --- */
+
+  .img-figure--no-alt .img-figure__alt-error {
+    display: none;
+  }
+
+  :global([data-preview]) .img-figure--no-alt .img-figure__img,
+  :global([data-preview]) .img-figure--no-alt .img-figure__placeholder {
+    outline: 3px solid var(--color-error);
+    outline-offset: 2px;
+    border-radius: var(--radius-md);
+  }
+
+  :global([data-preview]) .img-figure--no-alt .img-figure__alt-error {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-2);
+    margin-top: var(--spacing-2);
+    padding: var(--spacing-2) var(--spacing-3);
+    background: color-mix(in srgb, var(--color-error) 10%, transparent);
+    border: 1px solid var(--color-error);
+    border-radius: var(--radius-sm);
+    color: var(--color-error);
+    font-size: var(--font-size-sm);
+    font-family: var(--font-family-base);
+  }
+</style>

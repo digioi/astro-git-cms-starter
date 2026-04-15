@@ -1,0 +1,15 @@
+---
+/**
+ * Fallback for unknown MDX tags.
+ *
+ * When an MDX file uses a capitalised tag that isn't registered in
+ * mdx-components.ts (e.g. a typo like <Foobar>), the Proxy in
+ * mdx-components.ts returns this component instead of undefined.
+ * It renders only the slot children, effectively stripping the unknown
+ * tag and leaving the inner content as plain text/HTML.
+ *
+ * This is intentionally a no-op wrapper — do not add markup or styles.
+ */
+---
+
+<slot />

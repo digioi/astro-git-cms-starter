@@ -31,21 +31,27 @@ The long-term vision is a CMS where:
 ├── content/                  # MDX content files — this is the CMS data layer
 │   └── *.mdx                 # Each file becomes a page at its slug
 ├── integration/              # The gitcms Astro integration (future npm package)
-│   ├── index.ts              # Integration factory — injectRoute, updateConfig
-│   └── routes/
-│       ├── _cms/             # CMS editor UI routes (/_cms, /_cms/edit/[...slug])
-│       │   ├── index.astro   # Content file list
-│       │   ├── edit/
-│       │   │   └── [...slug].astro  # Side-by-side MDX editor + preview iframe
-│       │   └── api/
-│       │       └── content/
-│       │           └── [...slug].ts # GET/POST file read-write API
-│       └── preview/
-│           └── [...slug].astro      # Live on-demand MDX preview route
-├── public/                   # Static assets
+│   └── git-cms/
+│       ├── index.ts          # Integration factory — injectRoute, updateConfig
+│       └── routes/
+│           ├── _cms/         # CMS editor UI routes (/_cms, /_cms/edit/[...slug])
+│           │   ├── index.astro         # Content file list
+│           │   ├── edit/
+│           │   │   └── [...slug].astro # Side-by-side MDX editor + preview iframe
+│           │   └── api/
+│           │       ├── content/
+│           │       │   └── [...slug].ts # GET/POST file read-write API
+│           │       └── assets/
+│           │           ├── upload.ts    # POST multipart upload → src/assets/
+│           │           └── list.ts      # GET list of images in src/assets/
+│           └── preview/
+│               └── [...slug].astro      # Live on-demand MDX preview route
+├── public/                   # Static assets (not image-optimised — prefer src/assets/)
 └── src/
+    ├── assets/               # CMS-uploaded images land here (Astro image optimisation)
     ├── components/           # Design system components
-    │   ├── Button.astro      # Example component with variant/size props
+    │   ├── Button.astro      # Variant/size button component
+    │   ├── Image.astro       # MDX-friendly image wrapper (uses Astro <Image />)
     │   └── mdx-components.ts # Central component map exposed to MDX authors
     ├── content.config.ts     # Astro Content Collections schema (Zod)
     ├── layouts/
@@ -65,10 +71,12 @@ The long-term vision is a CMS where:
 |-----|--------|-------|
 | `/` | `src/pages/index.astro` | Renders `content/index.mdx` via Content Collections |
 | `/<slug>` | `src/pages/[...slug].astro` | Renders any other `content/<slug>.mdx`; drafts hidden in production |
-| `/preview/<slug>` | `integration/routes/preview/[...slug].astro` | **Dev only** — live on-demand render, reads file from disk on every request |
-| `/_cms` | `integration/routes/_cms/index.astro` | **Dev only** — lists all content files |
-| `/_cms/edit/<slug>` | `integration/routes/_cms/edit/[...slug].astro` | **Dev only** — MDX editor + preview iframe |
-| `/_cms/api/content/<slug>` | `integration/routes/_cms/api/content/[...slug].ts` | **Dev only** — file read/write API |
+| `/preview/<slug>` | `integration/git-cms/routes/preview/[...slug].astro` | **Dev only** — live on-demand render, reads file from disk on every request |
+| `/_cms` | `integration/git-cms/routes/_cms/index.astro` | **Dev only** — lists all content files |
+| `/_cms/edit/<slug>` | `integration/git-cms/routes/_cms/edit/[...slug].astro` | **Dev only** — MDX editor + preview iframe |
+| `/_cms/api/content/<slug>` | `integration/git-cms/routes/_cms/api/content/[...slug].ts` | **Dev only** — file read/write API |
+| `/_cms/api/assets/upload` | `integration/git-cms/routes/_cms/api/assets/upload.ts` | **Dev only** — POST multipart image upload to `src/assets/` |
+| `/_cms/api/assets/list` | `integration/git-cms/routes/_cms/api/assets/list.ts` | **Dev only** — GET list of all images in `src/assets/` |
 
 The `gitcms` integration gates all its routes behind `command !== 'build'`. In production, none of `/_cms` or `/preview` exist.
 
@@ -76,10 +84,10 @@ The `gitcms` integration gates all its routes behind `command !== 'build'`. In p
 
 ## The gitcms integration
 
-The integration lives at `/integration/index.ts` and is loaded in `astro.config.mjs`:
+The integration lives at `/integration/git-cms/index.ts` and is loaded in `astro.config.mjs`:
 
 ```js
-import { gitcms } from './integration/index.ts';
+import { gitcms } from './integration/git-cms/index.ts';
 
 export default defineConfig({
   integrations: [
@@ -93,16 +101,16 @@ export default defineConfig({
 - `contentDir` — path to the content directory relative to project root (default: `'content'`)
 - `base` — URL base for the CMS UI (default: `'/_cms'`)
 
-**When adding new routes to the integration**, inject them in `integration/index.ts` using `injectRoute()` inside the `command !== 'build'` guard. Route files live in `integration/routes/`.
+**When adding new routes to the integration**, inject them in `integration/git-cms/index.ts` using `injectRoute()` inside the `command !== 'build'` guard. Route files live in `integration/git-cms/routes/`.
 
-**The `@gitcms-project` Vite alias** is injected by the integration so that routes inside `integration/routes/` can import from the host project's `src/` directory without brittle relative paths:
+**The `@gitcms-project` Vite alias** is injected by the integration so that routes inside `integration/git-cms/routes/` can import from the host project's `src/` directory without brittle relative paths:
 
 ```ts
 import Layout from '@gitcms-project/layouts/Layout.astro';
 import { mdxComponents } from '@gitcms-project/components/mdx-components';
 ```
 
-**Future extraction**: When this integration is ready to become its own npm package, the `integration/` folder becomes a standalone package. The import in `astro.config.mjs` changes from `'./integration/index.ts'` to `'@scope/gitcms'`. Nothing else changes.
+**Future extraction**: When this integration is ready to become its own npm package, the `integration/` folder becomes a standalone package. The import in `astro.config.mjs` changes from `'./integration/git-cms/index.ts'` to `'@scope/gitcms'`. Nothing else changes.
 
 ---
 
@@ -156,6 +164,38 @@ Components that authors interact with via MDX attributes should use:
 
 ---
 
+## Images and assets
+
+### How images work
+
+- **CMS-uploaded images land in `src/assets/`** — this is intentional. Astro's build-time image optimisation pipeline only processes images from `src/assets/`. Files in `public/` bypass all optimisation.
+- The asset upload API (`/_cms/api/assets/upload`) accepts multipart POST requests, sanitises filenames, enforces a 10 MB limit, and only allows image MIME types. It writes files directly to `src/assets/`.
+- The asset list API (`/_cms/api/assets/list`) returns all images in `src/assets/` with name, path, size, and modified date.
+
+### The Image component
+
+`src/components/Image.astro` wraps Astro's built-in `<Image />` component with a simpler API for MDX authors. It uses `import.meta.glob` for build-time asset discovery and optimisation, and renders a styled error placeholder if the file is not found.
+
+Usage in MDX:
+
+```mdx
+<Image src="/src/assets/photo.jpg" alt="A photo" />
+<Image src="/src/assets/photo.jpg" alt="A photo" caption="Optional caption text" />
+```
+
+Props:
+- `src` — path starting with `/src/assets/` (required)
+- `alt` — alt text (required)
+- `caption` — optional caption rendered below the image
+
+**Do not** pass arbitrary CSS dimensions or class names — the component handles sizing via token-based styles.
+
+### CMS asset drawer
+
+The editor UI (`/_cms/edit/[...slug]`) has a collapsible "Images" panel in the editor pane. It shows all images from `src/assets/` via the list API. Clicking an asset copies an `<Image src="..." alt="..." />` MDX snippet to the clipboard, ready to paste into the editor.
+
+---
+
 ## Content
 
 ### Creating pages
@@ -204,5 +244,5 @@ All registered components are available without importing:
 - **Role-based access** — protect `/_cms` routes behind auth middleware
 - **Structured frontmatter editor** — config-driven form fields instead of raw YAML in the textarea
 - **Navigation** — auto-generated nav from the content tree
-- **Additional component variants** — only `Button` exists today
+- **Additional component variants** — only `Button` and `Image` exist today
 - **Token pipeline integration** — `config/tokens.ts` is compatible with Style Dictionary / Token Pipeline but no build step is wired up yet

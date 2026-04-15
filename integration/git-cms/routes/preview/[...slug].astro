@@ -16,6 +16,7 @@ import * as runtime from 'astro/jsx-runtime';
 import matter from 'gray-matter';
 import Layout from '@gitcms-project/layouts/Layout.astro';
 import { mdxComponents } from '@gitcms-project/components/mdx-components';
+import { recmaUnknownComponents } from '../../recma-unknown-components.js';
 
 const { slug } = Astro.params;
 
@@ -37,6 +38,7 @@ const { data: frontmatter, content: mdxBody } = matter(raw);
 const compiled = await compile(mdxBody, {
   outputFormat: 'function-body',
   development: false,
+  recmaPlugins: [recmaUnknownComponents],
 });
 
 const { default: Content } = await run(compiled, {
@@ -50,7 +52,7 @@ const description = frontmatter.description;
 const isDraft = frontmatter.draft === true;
 ---
 
-<Layout title={`Preview: ${title}`} description={description}>
+<Layout title={`Preview: ${title}`} description={description} preview={true}>
   <div class="preview-bar" aria-label="Preview mode indicator">
     <a class="preview-bar__cms-link" href={cmsBase}>gitcms</a>
     <span class="preview-bar__sep">/</span>
