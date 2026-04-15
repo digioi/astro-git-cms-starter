@@ -24,7 +24,7 @@ export function gitcms(options: GitCMSOptions = {}): AstroIntegration {
     name: 'gitcms',
 
     hooks: {
-      'astro:config:setup': ({ command, injectRoute, updateConfig, logger }) => {
+      'astro:config:setup': ({ command, config, injectRoute, updateConfig, logger }) => {
         // Only activate in dev mode — completely absent from production builds
         if (command === 'build') {
           logger.info('gitcms: build mode detected, CMS routes disabled.');
@@ -34,6 +34,10 @@ export function gitcms(options: GitCMSOptions = {}): AstroIntegration {
         logger.info(`gitcms: injecting CMS routes at ${cmsBase}`);
 
         const routesDir = fileURLToPath(new URL('./routes', import.meta.url));
+
+        // Resolve the project's src directory so injected routes can import
+        // project files (Layout, mdxComponents) via a stable alias
+        const srcDir = fileURLToPath(config.srcDir);
 
         // CMS index — lists all content files
         injectRoute({
@@ -56,9 +60,23 @@ export function gitcms(options: GitCMSOptions = {}): AstroIntegration {
           prerender: false,
         });
 
-        // Pass config down to the routes via Vite define
+        // Preview route — live on-demand MDX rendering, dev only
+        injectRoute({
+          pattern: '/preview/[...slug]',
+          entrypoint: resolve(routesDir, 'preview/[...slug].astro'),
+          prerender: false,
+        });
+
+        // Pass config down to the routes via Vite define + alias
         updateConfig({
           vite: {
+            resolve: {
+              alias: {
+                // Allows injected routes to import project src files with a
+                // stable path: '@gitcms-project/layouts/Layout.astro' etc.
+                '@gitcms-project': srcDir,
+              },
+            },
             define: {
               'import.meta.env.GITCMS_CONTENT_DIR': JSON.stringify(contentDir),
               'import.meta.env.GITCMS_BASE': JSON.stringify(cmsBase),

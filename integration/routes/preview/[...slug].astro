@@ -2,12 +2,9 @@
 /**
  * Preview route: /preview/<slug>
  *
- * Server-rendered (on-demand) — NOT prerendered at build time.
- * Every request reads the MDX file from disk and compiles it fresh,
- * so edits appear instantly without a rebuild.
- *
- * The main [...slug] route remains fully static (prerendered at build).
- * This is the split: static for visitors, live for the CMS preview.
+ * Injected by the gitcms integration — dev only, absent from production builds.
+ * Reads the MDX file from disk and compiles it fresh on every request so edits
+ * are visible immediately without a rebuild.
  */
 export const prerender = false;
 
@@ -17,8 +14,8 @@ import { join, resolve } from 'node:path';
 import { compile, run } from '@mdx-js/mdx';
 import * as runtime from 'astro/jsx-runtime';
 import matter from 'gray-matter';
-import Layout from '../../layouts/Layout.astro';
-import { mdxComponents } from '../../components/mdx-components';
+import Layout from '@gitcms-project/layouts/Layout.astro';
+import { mdxComponents } from '@gitcms-project/components/mdx-components';
 
 const { slug } = Astro.params;
 
@@ -26,8 +23,8 @@ if (!slug) {
   return new Response('Not found', { status: 404 });
 }
 
-// Resolve the content file path — project root /content/<slug>.mdx
-const contentRoot = resolve('content');
+const contentDir = import.meta.env.GITCMS_CONTENT_DIR ?? 'content';
+const contentRoot = resolve(contentDir);
 const filePath = join(contentRoot, `${slug}.mdx`);
 
 if (!existsSync(filePath)) {
@@ -35,22 +32,19 @@ if (!existsSync(filePath)) {
 }
 
 const raw = await readFile(filePath, 'utf-8');
-
-// Parse frontmatter separately (gray-matter strips it before MDX compilation)
 const { data: frontmatter, content: mdxBody } = matter(raw);
 
-// Compile the MDX body (frontmatter already stripped) to a JS module string
 const compiled = await compile(mdxBody, {
   outputFormat: 'function-body',
   development: false,
 });
 
-// Run the compiled module against Astro's JSX runtime to get the Content component
 const { default: Content } = await run(compiled, {
   ...runtime,
   baseUrl: import.meta.url,
 });
 
+const cmsBase = import.meta.env.GITCMS_BASE ?? '/_cms';
 const title = frontmatter.title ?? slug;
 const description = frontmatter.description;
 const isDraft = frontmatter.draft === true;
@@ -58,9 +52,12 @@ const isDraft = frontmatter.draft === true;
 
 <Layout title={`Preview: ${title}`} description={description}>
   <div class="preview-bar" aria-label="Preview mode indicator">
+    <a class="preview-bar__cms-link" href={cmsBase}>gitcms</a>
+    <span class="preview-bar__sep">/</span>
     <span class="preview-bar__badge">Preview</span>
     <span class="preview-bar__path">content/{slug}.mdx</span>
     {isDraft && <span class="preview-bar__draft">Draft</span>}
+    <a class="preview-bar__edit-link" href={`${cmsBase}/edit/${slug}`}>Edit ✏︎</a>
   </div>
   <Content components={mdxComponents} />
 </Layout>
@@ -76,6 +73,18 @@ const isDraft = frontmatter.draft === true;
     font-family: var(--font-family-base);
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-medium);
+  }
+
+  .preview-bar__cms-link {
+    color: var(--color-neutral-0);
+    text-decoration: none;
+    font-weight: var(--font-weight-bold);
+    opacity: 0.9;
+  }
+  .preview-bar__cms-link:hover { opacity: 1; text-decoration: underline; }
+
+  .preview-bar__sep {
+    opacity: 0.4;
   }
 
   .preview-bar__badge {
@@ -95,7 +104,6 @@ const isDraft = frontmatter.draft === true;
   }
 
   .preview-bar__draft {
-    margin-left: auto;
     background-color: var(--color-warning);
     color: var(--color-neutral-0);
     padding: var(--spacing-1) var(--spacing-2);
@@ -103,5 +111,20 @@ const isDraft = frontmatter.draft === true;
     font-size: var(--font-size-xs);
     font-weight: var(--font-weight-bold);
     text-transform: uppercase;
+  }
+
+  .preview-bar__edit-link {
+    margin-left: auto;
+    color: var(--color-neutral-0);
+    text-decoration: none;
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-semibold);
+    padding: var(--spacing-1) var(--spacing-2);
+    border: 1px solid rgb(255 255 255 / 0.4);
+    border-radius: var(--radius-sm);
+    transition: background-color var(--transition-duration-base);
+  }
+  .preview-bar__edit-link:hover {
+    background-color: rgb(255 255 255 / 0.15);
   }
 </style>

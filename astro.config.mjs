@@ -2,7 +2,7 @@
 import { defineConfig } from 'astro/config';
 import mdx from '@astrojs/mdx';
 import node from '@astrojs/node';
-import { gitcms } from './src/integration/index.ts';
+import { gitcms } from './integration/index.ts';
 
 // https://astro.build/config
 export default defineConfig({
